@@ -1,4 +1,5 @@
 # ss14-dwarf-accent
+RUSSIAN:
 программа имитирующая акцент дворфов из ss14 | a program that simulates the dwarf accent from SS14
 ЭТО НЕ ВИРУС!!! КОД ОТКРЫТ, ЧИТАЙТЕ ЕСЛИ СОМНЕВАЕТЕСЬ!!
 
@@ -71,6 +72,8 @@
 
 
 Features
+A program that simulates the dwarf accent from SS14
+THIS IS NOT A VIRUS!!! THE CODE IS OPEN, READ IF IN DOUBT!!
 
     Global hook: Works over any windows, intercepting input at the OS level.
 
