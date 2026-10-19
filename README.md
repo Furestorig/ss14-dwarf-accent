@@ -70,10 +70,11 @@ RUSSIAN:
 ВАЖНО!!
     я не несу ответственность за любые баны из-за этой программы, на различных серверах это могут расценить как чит, заранее          уточняйте можно ли использовать эту программу на сервере!!!
 
-
-Features
+ENGLIS:
 A program that simulates the dwarf accent from SS14
 THIS IS NOT A VIRUS!!! THE CODE IS OPEN, READ IF IN DOUBT!!
+Features
+
 
     Global hook: Works over any windows, intercepting input at the OS level.
 
