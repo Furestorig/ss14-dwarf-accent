@@ -111,7 +111,7 @@ def scan_to_char(scan_code):
 
 
 DWARF_REPLACEMENTS = {
-        "ты": "тый",
+    "ты": "тый",
     "вы": "вый",
     "он": "он",
     "она": "она",
