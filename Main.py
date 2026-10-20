@@ -110,6 +110,9 @@ def scan_to_char(scan_code):
     return None
 
 
+# =========================================================
+# ВСТАВЬ СВОЙ СЛОВАРЬ ПОСТРЕКОЧЕЙ СЮДА
+# =========================================================
 DWARF_REPLACEMENTS = {
     "ты": "тый",
     "вы": "вый",
@@ -337,6 +340,7 @@ DWARF_REPLACEMENTS = {
     "ебать": "йэбать",
     "хз":"нэ знайу"
 }
+# =========================================================
 
 PREPOSITIONS = {
     "в", "во", "без", "безо", "для", "до", "за", "из", "изо",
@@ -372,16 +376,8 @@ _RESET_KEYS = {
 _BOUNDARY_KEYS = {"space", "enter", "tab"}
 _PUNCT = {",", ".", "!", "?", ";", ":", "…"}
 
-_inject_until = 0.0
-
-
-def _injecting():
-    return time.time() < _inject_until
-
-
-def _mark_inject(duration=0.08):
-    global _inject_until
-    _inject_until = max(_inject_until, time.time() + duration)
+# Железобетонный флаг, что мы сейчас печатаем сами
+_injecting = False
 
 
 def _preserve_case(original, replacement):
@@ -395,26 +391,39 @@ def _preserve_case(original, replacement):
 
 
 def _send_replace_and_boundary(delete_len, text, boundary=None):
-    inputs = []
-    for _ in range(delete_len):
-        inputs.append(_ki(VK_BACK, 0, 0))
-        inputs.append(_ki(VK_BACK, 0, KEYEVENTF_KEYUP))
-    for ch in text:
-        code = ord(ch)
-        inputs.append(_ki(0, code, KEYEVENTF_UNICODE))
-        inputs.append(_ki(0, code, KEYEVENTF_UNICODE | KEYEVENTF_KEYUP))
-    if boundary:
-        if boundary in _PUNCT:
-            code = ord(boundary)
+    global _injecting
+    _injecting = True
+    try:
+        inputs = []
+        # Стираем слово
+        for _ in range(delete_len):
+            inputs.append(_ki(VK_BACK, 0, 0))
+            inputs.append(_ki(VK_BACK, 0, KEYEVENTF_KEYUP))
+        # Печатаем замену
+        for ch in text:
+            code = ord(ch)
             inputs.append(_ki(0, code, KEYEVENTF_UNICODE))
             inputs.append(_ki(0, code, KEYEVENTF_UNICODE | KEYEVENTF_KEYUP))
-        else:
-            bvk = _BOUNDARY_VK.get(boundary)
-            if bvk:
-                inputs.append(_ki(bvk, 0, 0))
-                inputs.append(_ki(bvk, 0, KEYEVENTF_KEYUP))
-    _mark_inject(0.08)
-    _send_batch(inputs)
+        # Ставим пробел/пунктуацию
+        if boundary:
+            if boundary in _PUNCT:
+                code = ord(boundary)
+                inputs.append(_ki(0, code, KEYEVENTF_UNICODE))
+                inputs.append(_ki(0, code, KEYEVENTF_UNICODE | KEYEVENTF_KEYUP))
+            else:
+                bvk = _BOUNDARY_VK.get(boundary)
+                if bvk:
+                    inputs.append(_ki(bvk, 0, 0))
+                    inputs.append(_ki(bvk, 0, KEYEVENTF_KEYUP))
+        
+        # Отправляем всё одной пачкой (мгновенно)
+        _send_batch(inputs)
+        
+        # ВАЖНО: даем ОС 15 миллисекунд, чтобы переварить эти нажатия, 
+        # иначе следующий символ пользователя может вклиниться в очередь
+        time.sleep(0.015)
+    finally:
+        _injecting = False
 
 
 def _process_word(word, boundary=None):
@@ -458,11 +467,13 @@ def _process_word(word, boundary=None):
 
 
 def _on_key(event):
+    global _injecting
     try:
         name = event.name
 
         if event.event_type == "down":
-            if _injecting():
+            # Если мы сами сейчас печатаем — просто пропускаем всё
+            if _injecting:
                 return True
 
             if name in _ALL_MODS:
@@ -477,6 +488,7 @@ def _on_key(event):
                 word = "".join(_buffer)
                 _buffer.clear()
                 changed = _process_word(word, boundary=name)
+                # Если замена была, возвращаем False (подавляем оригинальный пробел)
                 return not changed
 
             if name == "backspace":
