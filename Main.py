@@ -92,15 +92,17 @@ def scan_to_char(scan_code):
         vk = user32.MapVirtualKeyW(scan_code, 1)
         if not vk:
             return None
-        hwnd = user32.GetForegroundWindow()
-        thread_id = user32.GetWindowThreadProcessId(hwnd, None)
-        layout = user32.GetKeyboardLayout(thread_id)
+        
+        # Для игр берем системную раскладку, а не активного окна
+        layout = user32.GetKeyboardLayout(0)
+        
+        # Вручную собираем состояние клавиш, так как suppress=True ломает GetKeyboardState
         state = (ctypes.c_ubyte * 256)()
-        user32.GetKeyboardState(state)
-        if user32.GetAsyncKeyState(0x10) & 0x8000:
-            state[0x10] = 0x80
-        else:
-            state[0x10] = 0
+        if user32.GetAsyncKeyState(0x10) & 0x8000: state[0x10] = 0x80 # Shift
+        if user32.GetAsyncKeyState(0x11) & 0x8000: state[0x11] = 0x80 # Ctrl
+        if user32.GetAsyncKeyState(0x12) & 0x8000: state[0x12] = 0x80 # Alt
+        if user32.GetAsyncKeyState(0x14) & 0x0001: state[0x14] = 0x01 # Caps Lock
+        
         buf = ctypes.create_unicode_buffer(8)
         res = user32.ToUnicodeEx(vk, scan_code, state, buf, 8, 0, layout)
         if res > 0:
@@ -110,9 +112,6 @@ def scan_to_char(scan_code):
     return None
 
 
-# =========================================================
-# ВСТАВЬ СВОЙ СЛОВАРЬ ПОСТРЕКОЧЕЙ СЮДА
-# =========================================================
 DWARF_REPLACEMENTS = {
     "ты": "тый",
     "сяб":"спасыба",
@@ -341,7 +340,6 @@ DWARF_REPLACEMENTS = {
     "ебать": "йэбать",
     "хз":"нэ знайу"
 }
-# =========================================================
 
 PREPOSITIONS = {
     "в", "во", "без", "безо", "для", "до", "за", "из", "изо",
@@ -472,39 +470,39 @@ def _on_key(event):
         name = event.name
 
         if event.event_type == "down":
-            # Если это наши синтетические нажатия — ПРОПУСКАЕМ их в редактор (False)
+            # Пропускаем наши синтетические нажатия
             if _injecting:
-                return False
+                return True
 
-            # Модификаторы ПРОПУСКАЕМ (False), чтобы Shift и Ctrl работали
+            # Пропускаем модификаторы
             if name in _ALL_MODS:
                 _mods.add(name)
-                return False
+                return True
 
-            # Если зажат Ctrl/Alt — сбрасываем буфер и ПРОПУСКАЕМ (False) для хоткеев
+            # Пропускаем хоткеи (Ctrl+C и т.д.)
             if any(m in _mods for m in _BLOCKING_MODS):
                 _reset_state()
-                return False
+                return True
 
-            # Пробел/Enter/Tab: подавляем (True), только если была замена. Иначе пропускаем (False)
+            # Пробел/Enter/Tab: блокируем (False), если была замена. Иначе пропускаем (True).
             if name in _BOUNDARY_KEYS:
                 word = "".join(_buffer)
                 _buffer.clear()
                 changed = _process_word(word, boundary=name)
-                return changed
+                return not changed
 
-            # Бэкспейс: ВСЕГДА ПРОПУСКАЕМ (False), чтобы можно было стирать текст!
+            # Бэкспейс: ВСЕГДА ПРОПУСКАЕМ (True), чтобы можно было стирать!
             if name == "backspace":
                 if _buffer:
                     _buffer.pop()
                 _last_word = ""
                 _last_was_prep = False
-                return False
+                return True
 
-            # Стрелки/Esc: сбрасываем буфер и ПРОПУСКАЕМ (False), чтобы курсор двигался
+            # Стрелки/Esc: сбрасываем буфер и ПРОПУСКАЕМ (True)
             if name in _RESET_KEYS:
                 _reset_state()
-                return False
+                return True
 
             ch = scan_to_char(event.scan_code)
             
@@ -512,33 +510,33 @@ def _on_key(event):
                 if len(name) == 1 and name.isprintable():
                     ch = name
                 else:
-                    return False # Пропускаем всё непонятное
+                    return True # Пропускаем всё непонятное
 
             if ch.isspace():
-                return False
+                return True
 
-            # Пунктуация: подавляем (True), если была замена, иначе пропускаем (False)
+            # Пунктуация: блокируем (False), если была замена, иначе пропускаем (True)
             if ch in _PUNCT:
                 word = "".join(_buffer)
                 _buffer.clear()
                 changed = _process_word(word, boundary=ch)
-                return changed
+                return not changed
 
-            # Обычные буквы: добавляем в буфер и ПРОПУСКАЕМ (False), чтобы они напечатались
+            # Обычные буквы: добавляем в буфер и ПРОПУСКАЕМ (True)
             if len(_buffer) < 64:
                 _buffer.append(ch)
-            return False
+            return True
 
         elif event.event_type == "up":
             if name in _ALL_MODS:
                 _mods.discard(name)
-            return False # Пропускаем отпускание клавиш
+            return True
     except Exception:
-        return False # При ошибке просто пропускаем клавишу, чтобы не ломать ввод
+        return True
 
 
 def main():
-    print("Пострекочий акцент запущен в фоне.")
+    print("Дворфийский акцент запущен в фоне.")
     print("Печатай в любой программе. Выход: Ctrl + Alt + Q")
 
     def shutdown():
