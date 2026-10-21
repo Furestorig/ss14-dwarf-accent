@@ -414,9 +414,6 @@ def _send_replace_and_boundary(delete_len, text, boundary=None):
                     inputs.append(_ki(bvk, 0, KEYEVENTF_KEYUP))
         
         _send_batch(inputs)
-        
-        # Пауза нужна, чтобы ОС переварила ввод, но мы уменьшили её до 10мс,
-        # чтобы не блокировать твой быстрый ввод.
         time.sleep(0.01) 
     finally:
         _injecting = False
@@ -475,66 +472,69 @@ def _on_key(event):
         name = event.name
 
         if event.event_type == "down":
+            # Если это наши синтетические нажатия — ПРОПУСКАЕМ их в редактор (False)
             if _injecting:
-                return True
+                return False
 
+            # Модификаторы ПРОПУСКАЕМ (False), чтобы Shift и Ctrl работали
             if name in _ALL_MODS:
                 _mods.add(name)
-                return True
+                return False
 
+            # Если зажат Ctrl/Alt — сбрасываем буфер и ПРОПУСКАЕМ (False) для хоткеев
             if any(m in _mods for m in _BLOCKING_MODS):
                 _reset_state()
-                return True
+                return False
 
-            # ФИКС 1: Инвертированная логика (True = подавить, False = пропустить)
+            # Пробел/Enter/Tab: подавляем (True), только если была замена. Иначе пропускаем (False)
             if name in _BOUNDARY_KEYS:
                 word = "".join(_buffer)
                 _buffer.clear()
                 changed = _process_word(word, boundary=name)
-                return changed  # Если замена была — подавляем оригинал (ставим свой)
+                return changed
 
-            # ФИКС 2: Бэкспейс. Если буфер пуст, не подавляем клавишу!
+            # Бэкспейс: ВСЕГДА ПРОПУСКАЕМ (False), чтобы можно было стирать текст!
             if name == "backspace":
                 if _buffer:
                     _buffer.pop()
-                    _last_word = ""
-                    _last_was_prep = False
-                    return True
+                _last_word = ""
+                _last_was_prep = False
                 return False
 
-            # ФИКС 3: Сброс состояния при стрелках/Esc
+            # Стрелки/Esc: сбрасываем буфер и ПРОПУСКАЕМ (False), чтобы курсор двигался
             if name in _RESET_KEYS:
                 _reset_state()
-                return True
+                return False
 
             ch = scan_to_char(event.scan_code)
             
-            # Фолбэк для раскладки
             if not ch:
                 if len(name) == 1 and name.isprintable():
                     ch = name
                 else:
-                    return True
+                    return False # Пропускаем всё непонятное
 
             if ch.isspace():
-                return True
+                return False
 
+            # Пунктуация: подавляем (True), если была замена, иначе пропускаем (False)
             if ch in _PUNCT:
                 word = "".join(_buffer)
                 _buffer.clear()
                 changed = _process_word(word, boundary=ch)
-                return changed  # Аналогично пробелу
+                return changed
 
+            # Обычные буквы: добавляем в буфер и ПРОПУСКАЕМ (False), чтобы они напечатались
             if len(_buffer) < 64:
                 _buffer.append(ch)
-            return True
+            return False
 
         elif event.event_type == "up":
             if name in _ALL_MODS:
                 _mods.discard(name)
-            return True
+            return False # Пропускаем отпускание клавиш
     except Exception:
-        return True
+        return False # При ошибке просто пропускаем клавишу, чтобы не ломать ввод
 
 
 def main():
