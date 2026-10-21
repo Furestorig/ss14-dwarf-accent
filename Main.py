@@ -115,6 +115,7 @@ def scan_to_char(scan_code):
 # =========================================================
 DWARF_REPLACEMENTS = {
     "ты": "тый",
+    "сяб":"спасыба",
     "вы": "вый",
     "он": "он",
     "она": "она",
@@ -376,7 +377,6 @@ _RESET_KEYS = {
 _BOUNDARY_KEYS = {"space", "enter", "tab"}
 _PUNCT = {",", ".", "!", "?", ";", ":", "…"}
 
-# Железобетонный флаг, что мы сейчас печатаем сами
 _injecting = False
 
 
@@ -395,16 +395,13 @@ def _send_replace_and_boundary(delete_len, text, boundary=None):
     _injecting = True
     try:
         inputs = []
-        # Стираем слово
         for _ in range(delete_len):
             inputs.append(_ki(VK_BACK, 0, 0))
             inputs.append(_ki(VK_BACK, 0, KEYEVENTF_KEYUP))
-        # Печатаем замену
         for ch in text:
             code = ord(ch)
             inputs.append(_ki(0, code, KEYEVENTF_UNICODE))
             inputs.append(_ki(0, code, KEYEVENTF_UNICODE | KEYEVENTF_KEYUP))
-        # Ставим пробел/пунктуацию
         if boundary:
             if boundary in _PUNCT:
                 code = ord(boundary)
@@ -416,12 +413,11 @@ def _send_replace_and_boundary(delete_len, text, boundary=None):
                     inputs.append(_ki(bvk, 0, 0))
                     inputs.append(_ki(bvk, 0, KEYEVENTF_KEYUP))
         
-        # Отправляем всё одной пачкой (мгновенно)
         _send_batch(inputs)
         
-        # ВАЖНО: даем ОС 15 миллисекунд, чтобы переварить эти нажатия, 
-        # иначе следующий символ пользователя может вклиниться в очередь
-        time.sleep(0.015)
+        # Пауза нужна, чтобы ОС переварила ввод, но мы уменьшили её до 10мс,
+        # чтобы не блокировать твой быстрый ввод.
+        time.sleep(0.01) 
     finally:
         _injecting = False
 
@@ -466,13 +462,19 @@ def _process_word(word, boundary=None):
     return True
 
 
+def _reset_state():
+    global _buffer, _last_word, _last_was_prep
+    _buffer.clear()
+    _last_word = ""
+    _last_was_prep = False
+
+
 def _on_key(event):
     global _injecting
     try:
         name = event.name
 
         if event.event_type == "down":
-            # Если мы сами сейчас печатаем — просто пропускаем всё
             if _injecting:
                 return True
 
@@ -481,34 +483,47 @@ def _on_key(event):
                 return True
 
             if any(m in _mods for m in _BLOCKING_MODS):
-                _buffer.clear()
+                _reset_state()
                 return True
 
+            # ФИКС 1: Инвертированная логика (True = подавить, False = пропустить)
             if name in _BOUNDARY_KEYS:
                 word = "".join(_buffer)
                 _buffer.clear()
                 changed = _process_word(word, boundary=name)
-                # Если замена была, возвращаем False (подавляем оригинальный пробел)
-                return not changed
+                return changed  # Если замена была — подавляем оригинал (ставим свой)
 
+            # ФИКС 2: Бэкспейс. Если буфер пуст, не подавляем клавишу!
             if name == "backspace":
                 if _buffer:
                     _buffer.pop()
-                return True
+                    _last_word = ""
+                    _last_was_prep = False
+                    return True
+                return False
 
+            # ФИКС 3: Сброс состояния при стрелках/Esc
             if name in _RESET_KEYS:
-                _buffer.clear()
+                _reset_state()
                 return True
 
             ch = scan_to_char(event.scan_code)
-            if not ch or len(ch) != 1 or ch.isspace():
+            
+            # Фолбэк для раскладки
+            if not ch:
+                if len(name) == 1 and name.isprintable():
+                    ch = name
+                else:
+                    return True
+
+            if ch.isspace():
                 return True
 
             if ch in _PUNCT:
                 word = "".join(_buffer)
                 _buffer.clear()
                 changed = _process_word(word, boundary=ch)
-                return not changed
+                return changed  # Аналогично пробелу
 
             if len(_buffer) < 64:
                 _buffer.append(ch)
@@ -523,7 +538,7 @@ def _on_key(event):
 
 
 def main():
-    print("Dwarf accent запущен в фоне.")
+    print("Пострекочий акцент запущен в фоне.")
     print("Печатай в любой программе. Выход: Ctrl + Alt + Q")
 
     def shutdown():
